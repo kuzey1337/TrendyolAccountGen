@@ -1,0 +1,3 @@
+user:pass@host:port olarak proxyleri buraya atın.
+
+uyguna proxy almak için discord.gg/switchuwu GB/2$
