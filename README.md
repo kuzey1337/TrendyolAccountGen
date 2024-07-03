@@ -8,9 +8,9 @@
 
 ## 🌟 Yıldızlarla Açılan Özellikler
 
-- ✅ 20 Stars | Trendyol Sepete Ekleme
-- ✅ 35 Stars | Trendyol Favoriye Ekleme
-- ✅ 50 Stars | Mağza Takip Edip , Ürüne Görüntüleme Yollama
+- ❌ 20 Stars | Trendyol Sepete Ekleme
+- ❌ 35 Stars | Trendyol Favoriye Ekleme
+- ❌ 50 Stars | Mağza Takip Edip , Ürüne Görüntüleme Yollama
 
 
 
