@@ -6,8 +6,8 @@ import sys
 import threading
 import colorama
 from colorama import init, Fore, Style
-import httpx
 from captcha_solver import solve_recaptcha, get_task_result
+import tls_client
 
 init(autoreset=True)
 
@@ -23,9 +23,8 @@ headers = {
     'application-id': '1',
     'content-type': 'application/json;charset=UTF-8',
     'culture': 'tr-TR',
-    'storefront-id': '1',
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
     'origin': 'https://auth.trendyol.com',
+    'priority': 'u=1, i',
     'referer': 'https://auth.trendyol.com/static/fragment?application-id=1&storefront-id=1&culture=tr-TR&language=tr&debug=false',
     'sec-ch-ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
     'sec-ch-ua-mobile': '?0',
@@ -33,7 +32,8 @@ headers = {
     'sec-fetch-dest': 'empty',
     'sec-fetch-mode': 'cors',
     'sec-fetch-site': 'same-origin',
-    'priority': 'u=1, i',
+    'storefront-id': '1',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
 }
 
 proxy_list = open("proxies.txt", "r").readlines()
@@ -44,7 +44,7 @@ def save_account_info(email, password):
 
 def get_mail(token, domain):
     try:
-        response = httpx.get(f"https://api.kopeechka.store/mailbox-get-email?site=www.trendyol.com&mail_type=OUTLOOK&token={token}&password=0&regex=&subject=&investor=&soft=&type=json&api=2.0")
+        response = requests.get(f"https://api.kopeechka.store/mailbox-get-email?site=www.trendyol.com&mail_type=OUTLOOK&token={token}&password=0&regex=&subject=&investor=&soft=&type=json&api=2.0")
         if response.status_code == 200:
             req = response.json()
             if req["status"] == "OK":
@@ -62,7 +62,7 @@ def get_verification_code(email_id, token):
     email_printed = True
     while True:
         try:
-            response = httpx.get(f"https://api.kopeechka.store/mailbox-get-message?full=1&id={email_id}&token={token}")
+            response = requests.get(f"https://api.kopeechka.store/mailbox-get-message?full=1&id={email_id}&token={token}")
             if response.status_code == 200:
                 req = response.json()
                 if req["status"] == "OK":
@@ -86,8 +86,19 @@ def get_verification_code(email_id, token):
 
 def register_account(mail, email_id, token):
     try:
-        proxy = random.choice(proxy_list)
-        proxies = {'http': 'http://' + proxy.strip(), 'https': 'http://' + proxy.strip()}
+        proxy = random.choice(proxy_list).strip()
+        if not proxy.startswith(('http://', 'https://')):
+            proxy = 'http://' + proxy
+
+        proxies = {
+            'http': proxy,
+            'https': proxy
+        }
+
+        session = tls_client.Session(
+            client_identifier="chrome_126",
+            random_tls_extension_order=True
+        )
 
         task_id = solve_recaptcha(CAPSOLVER_API_KEY, SITE_KEY, SITE_URL)
         if task_id:
@@ -98,7 +109,7 @@ def register_account(mail, email_id, token):
             json_data = {
                 'email': mail,
                 'password': DEFAULT_PASSWORD,
-                'genderId': 1,
+                'genderId': 2,
                 'captchaToken': g_recaptcha_response,
                 'marketingEmailsAuthorized': True,
                 'newCoPrivacyStatementForTYChecked': True,
@@ -107,28 +118,31 @@ def register_account(mail, email_id, token):
                 'otpCode': None,
             }
 
-            response = requests.post('https://auth.trendyol.com/v2/signup', headers=headers, json=json_data, proxies=proxies)
+            try:
+                session.proxies = proxies
 
-            if response.status_code == 200:
-                print(f"{Fore.GREEN}Trendyol kayıt işlemi başarılı! E-posta: {mail}, Şifre: {DEFAULT_PASSWORD}")
-                save_account_info(mail, DEFAULT_PASSWORD)
-            elif response.status_code == 428 and "E-posta doğrulaması gerekli." in response.text:
-                print("\033[92mE-posta doğrulaması gerekli. Bekleniyor...")
-
-                verification_code = get_verification_code(email_id, token)
-                json_data['otpCode'] = verification_code
-
-                response = requests.post('https://auth.trendyol.com/v2/signup', headers=headers, json=json_data, proxies=proxies)
+                response = session.post('https://auth.trendyol.com/v2/signup', headers=headers, json=json_data)
 
                 if response.status_code == 200:
-                    print(f"{Fore.GREEN}Trendyol kayıt işlemi başarılı! E-posta: {mail}, Şifre: {DEFAULT_PASSWORD}, {response.text}")
+                    print(f"{Fore.GREEN}Trendyol kayıt işlemi başarılı! E-posta: {mail}, Şifre: {DEFAULT_PASSWORD}")
                     save_account_info(mail, DEFAULT_PASSWORD)
+                elif response.status_code == 428 and "E-posta doğrulaması gerekli." in response.text:
+                    print("\033[92mE-posta doğrulaması gerekli. Bekleniyor...")
+
+                    verification_code = get_verification_code(email_id, token)
+                    json_data['otpCode'] = verification_code
+
+                    response = session.post('https://auth.trendyol.com/v2/signup', headers=headers, json=json_data)
+
+                    if response.status_code == 200:
+                        print(f"{Fore.GREEN}Trendyol kayıt işlemi başarılı! E-posta: {mail}, Şifre: {DEFAULT_PASSWORD}, {response.text}")
+                        save_account_info(mail, DEFAULT_PASSWORD)
+                    else:
+                        print(f"Trendyol kayıt işlemi başarısız. Status code: {response.status_code}, Response: {response.text}")
                 else:
                     print(f"Trendyol kayıt işlemi başarısız. Status code: {response.status_code}, Response: {response.text}")
-            else:
-                print(f"Trendyol kayıt işlemi başarısız. Status code: {response.status_code}, Response: {response.text}")
-        else:
-            print("Failed to get task ID.")
+            except Exception as e:
+                print(f"Request error: {str(e)}")
     except Exception as e:
         print(f"Error: {str(e)}")
     return False, None
